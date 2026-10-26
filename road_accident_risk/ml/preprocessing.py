@@ -6,7 +6,7 @@ import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder
 
 from ml.utils import normalize_text
 
@@ -22,10 +22,10 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
             cleaned[column] = pd.to_numeric(cleaned[column].astype(str).str.strip(), errors="coerce")
         else:
             cleaned[column] = cleaned[column].map(normalize_text)
-            cleaned[column] = cleaned[column].replace({"Unknown": "Unknown"})
 
     cleaned = cleaned.dropna(subset=[TARGET_COLUMN]).copy()
-    cleaned = cleaned.drop_duplicates().copy()
+    cleaned = cleaned[cleaned[TARGET_COLUMN].isin([0, 1, 2])].copy()
+    cleaned = cleaned.drop_duplicates().copy().reset_index(drop=True)
     cleaned[TARGET_COLUMN] = cleaned[TARGET_COLUMN].astype(int)
     return cleaned
 
@@ -40,23 +40,22 @@ def build_preprocessor(X: pd.DataFrame) -> ColumnTransformer:
 
     transformers: List[Tuple[str, Pipeline, List[str]]] = []
 
-    if numerical_columns:
-        num_pipeline = Pipeline(
-            steps=[
-                ("imputer", SimpleImputer(strategy="median")),
-                ("scaler", StandardScaler()),
-            ]
-        )
-        transformers.append(("numeric", num_pipeline, numerical_columns))
-
     if categorical_columns:
-        cat_pipeline = Pipeline(
+        categorical_pipeline = Pipeline(
             steps=[
                 ("imputer", SimpleImputer(strategy="constant", fill_value="Unknown")),
                 ("onehot", OneHotEncoder(handle_unknown="ignore")),
             ]
         )
-        transformers.append(("categorical", cat_pipeline, categorical_columns))
+        transformers.append(("categorical", categorical_pipeline, categorical_columns))
+
+    if numerical_columns:
+        numerical_pipeline = Pipeline(
+            steps=[
+                ("imputer", SimpleImputer(strategy="median")),
+            ]
+        )
+        transformers.append(("numeric", numerical_pipeline, numerical_columns))
 
     if not transformers:
         raise ValueError("No feature columns available for preprocessing.")

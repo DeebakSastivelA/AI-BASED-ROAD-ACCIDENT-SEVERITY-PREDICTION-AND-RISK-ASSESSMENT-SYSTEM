@@ -1,194 +1,87 @@
 # AI-Based Road Accident Severity Prediction and Risk Assessment System
 
-## 1. Project Overview
+## Overview
 
-This project builds a complete machine learning pipeline for road accident severity prediction using the real dataset stored in `data/cleaned.csv`. The system performs data exploration, data quality checks, preprocessing, model training, evaluation, model comparison, and risk prediction using a polished Streamlit dashboard.
+This project predicts road accident severity using the balanced synthetic dataset `road_accident_balanced_reality_based_18000.csv`, which is the active dataset for training, evaluation, and prediction. The dashboard is built with Streamlit and uses two scikit-learn classifiers: logistic regression and random forest.
 
-## 2. Problem Statement
+The dataset is intentionally synthetic and balanced for academic use. It is not a representation of real-world accident statistics.
 
-Road traffic accidents create significant safety, health, and economic costs. Accurate prediction of accident severity helps support decision-making, identify high-risk conditions, and guide preventive safety recommendations.
+## Severity mapping
 
-## 3. Objective
+The target variable is `Accident_severity` with the required mapping:
 
-The main objective is to predict accident severity from real accident-condition features and present the results through an explainable, user-friendly Streamlit interface.
+- 0 = Fatal Injury
+- 1 = Serious Injury
+- 2 = Slight Injury
 
-## 4. Dataset
+The user-facing risk labels are:
 
-The dataset is loaded from `data/cleaned.csv` and contains accident records with the following key columns:
+- 0 -> Very High
+- 1 -> High
+- 2 -> Low
 
-- Age_band_of_driver
-- Sex_of_driver
-- Educational_level
-- Vehicle_driver_relation
-- Driving_experience
-- Lanes_or_Medians
-- Types_of_Junction
-- Road_surface_type
-- Light_conditions
-- Weather_conditions
-- Type_of_collision
-- Vehicle_movement
-- Pedestrian_movement
-- Cause_of_accident
-- Accident_severity
+## Data source
 
-The target column is `Accident_severity` and is not used as an input feature during model training.
+The primary dataset is located at the workspace root and is loaded automatically by the project:
 
-## 5. EDA
+- `road_accident_balanced_reality_based_18000.csv`
 
-The project includes an end-to-end exploratory data analysis phase that examines:
+The original `cleaned.csv` file is kept untouched and is not used as the active training dataset.
 
-- dataset shape and structure
-- missing values
-- duplicate rows
-- target distribution
-- category distribution by feature
-- feature relationship with severity
-- saved charts under `reports/eda/`
+## Included functionality
 
-## 6. Preprocessing
+- Data cleaning and validation
+- Exploratory data analysis charts
+- Stratified 80/20 train/test split
+- Preprocessing with `OneHotEncoder(handle_unknown="ignore")`
+- Training of both logistic regression and random forest models
+- Model comparison using macro F1
+- Saved model artifacts and metadata
+- Streamlit dashboard for home, EDA, dataset, prediction, model performance, and about pages
+- Explainable safety recommendations based on the selected scenario
 
-Preprocessing is applied carefully to avoid data leakage:
+## Project structure
 
-- missing values are inspected and normalized
-- empty strings and whitespace are cleaned
-- invalid or inconsistent category values are standardized
-- duplicate records are removed
-- the target column is checked and cleaned
-- categorical features are encoded with `OneHotEncoder(handle_unknown="ignore")`
-- numerical features are imputed and scaled when present
-- train/test split uses 80/20 with random_state=42 and stratification
-
-## 7. Machine Learning Models
-
-### Logistic Regression
-
-A logistic regression classifier is trained using a scikit-learn pipeline with preprocessing and class balancing support. This model is useful for interpretability and relatively stable performance on structured tabular data.
-
-### Random Forest
-
-A random forest classifier is trained with class balancing and a scikit-learn preprocessing pipeline. This model is evaluated alongside logistic regression for comparison.
-
-## 8. Evaluation Metrics
-
-The trained models are evaluated with:
-
-- Accuracy
-- Precision
-- Recall
-- F1-score
-- Macro F1
-- Weighted F1
-- confusion matrix
-- per-class precision, recall, and F1
-
-These values are computed from the actual model predictions on the untouched test set.
-
-## 9. Model Selection
-
-The best model is selected programmatically based on actual evaluation results, prioritizing:
-
-1. Macro F1
-2. Per-class recall
-3. F1
-4. Accuracy
-
-The winning pipeline is saved as `models/best_model.joblib` and the metadata is stored in `models/model_metadata.json`.
-
-## 10. Explainable Prediction
-
-The prediction interface explains the model output with the most influential encoded features and the reason the model likely selected the predicted severity. This explanation is generated from the trained model and the user input and is presented under the "Why is this risk?" section.
-
-## 11. Streamlit Application
-
-The app contains the following sections:
-
-- Home
-- EDA
-- Predict Risk
-- Dataset
-- Model Performance
-- About
-
-The dashboard provides a polished and presentation-friendly interface for exploring data, comparing models, and predicting accident risk.
-
-## 12. Installation
-
-Create a virtual environment and install dependencies:
-
-```bash
-python -m venv venv
+```text
+new ml/
+├── cleaned.csv
+├── requirements.txt
+├── road_accident_balanced_reality_based_18000.csv
+├── road_accident_risk/
+│   ├── app.py
+│   ├── README.md
+│   ├── requirements.txt
+│   ├── assets/
+│   ├── data/
+│   ├── ml/
+│   ├── models/
+│   └── reports/
+└── .venv/
 ```
 
-Windows:
+## Training
+
+From the project folder:
 
 ```bash
-venv\Scripts\activate
-```
-
-Then install the project dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-## 13. Training and Running
-
-Train the models:
-
-```bash
+cd road_accident_risk
 python ml/train_models.py
 ```
 
-Run the Streamlit app:
+This generates the trained pipeline files and evaluation artifacts in `models/` and `reports/`.
+
+## Running the app
 
 ```bash
+cd road_accident_risk
 streamlit run app.py
 ```
 
-## 14. Project Structure
+The app loads the saved best model and uses the active dataset metadata to generate predictions. It does not force a prediction; the user selects the scenario and the model determines the outcome.
 
-```text
-road_accident_risk/
-├── app.py
-├── requirements.txt
-├── README.md
-├── .gitignore
-├── .streamlit/
-│   └── config.toml
-├── data/
-│   └── cleaned.csv
-├── ml/
-│   ├── __init__.py
-│   ├── data_analysis.py
-│   ├── preprocessing.py
-│   ├── train_models.py
-│   ├── evaluate_models.py
-│   ├── explain_predictions.py
-│   └── utils.py
-├── models/
-│   ├── logistic_regression_pipeline.joblib
-│   ├── random_forest_pipeline.joblib
-│   ├── best_model.joblib
-│   └── model_metadata.json
-├── reports/
-│   ├── eda/
-│   └── model_evaluation/
-├── assets/
-│   └── images/
-└── .gitignore
-```
+## Notes
 
-## 15. Future Improvements
-
-Possible future enhancements include:
-
-- more accident datasets from multiple regions
-- geographic risk mapping
-- real-time traffic and weather integration
-- additional explainable AI methods
-- more advanced ML models and ensemble methods
-
-## 16. Final Notes
-
-This project is designed to demonstrate the complete machine learning lifecycle using real data, transparent preprocessing, objective model comparison, and user-friendly risk assessment.
+- The app uses the model prediction to determine the displayed result.
+- The dataset is synthetic and balanced for experimentation.
+- All model outputs and chart artifacts are stored under the project’s `models/` and `reports/` folders.
+- The app does not overwrite or rename `cleaned.csv`.

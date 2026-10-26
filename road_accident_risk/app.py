@@ -9,8 +9,299 @@ from ml.explain_predictions import explain_model_prediction, generate_safety_rec
 from ml.preprocessing import TARGET_COLUMN, clean_dataset, get_feature_options
 from ml.utils import DATA_PATH, MODELS_DIR, infer_risk_mapping, load_dataset, load_json, safe_load_model
 
+SEVERITY_MAPPING = {
+    0: {"severity": "Fatal Injury", "risk": "Very High"},
+    1: {"severity": "Serious Injury", "risk": "High"},
+    2: {"severity": "Slight Injury", "risk": "Low"},
+}
+
 
 st.set_page_config(page_title="Road Accident Risk AI", page_icon="🚗", layout="wide")
+
+st.markdown(
+    """
+    <style>
+        :root {
+            --bg: #081223;
+            --bg-soft: #111827;
+            --panel: rgba(15, 23, 42, 0.88);
+            --panel-soft: rgba(17, 24, 39, 0.72);
+            --border: rgba(148, 163, 184, 0.2);
+            --text: #e5eefb;
+            --muted: #a8bbd8;
+            --primary: #5bb4ff;
+            --green: #39d98a;
+            --green-soft: rgba(57, 217, 138, 0.12);
+            --amber: #fbbf24;
+            --amber-soft: rgba(251, 191, 36, 0.12);
+            --red: #ef4444;
+            --red-soft: rgba(239, 68, 68, 0.12);
+            --dark-red: #7f1d1d;
+            --shadow: 0 16px 40px rgba(15, 23, 42, 0.45);
+        }
+
+        .stApp {
+            background: linear-gradient(180deg, #081223 0%, #0d1729 100%);
+            color: var(--text);
+        }
+
+        [data-testid="stSidebar"] {
+            background: linear-gradient(180deg, rgba(9,16,29,1) 0%, rgba(21,30,49,0.96) 100%);
+            border-right: 1px solid rgba(148, 163, 184, 0.18);
+            box-shadow: 10px 0 30px rgba(0, 0, 0, 0.22);
+            padding: 0.8rem 0.9rem 1.2rem 0.9rem;
+        }
+
+        [data-testid="stSidebar"] > div {
+            background: rgba(15, 23, 42, 0.38);
+            border-radius: 18px;
+            border: 1px solid rgba(148, 163, 184, 0.08);
+        }
+
+        [data-testid="stSidebar"] h1,
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3,
+        [data-testid="stSidebar"] p {
+            color: #edf6ff !important;
+        }
+
+        [data-testid="stSidebar"] .css-1d391kg {
+            font-size: 0.8rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: rgba(191, 219, 254, 0.9);
+            margin: 0.5rem 0 1rem 0;
+            padding-left: 0.2rem;
+        }
+
+        [data-testid="stSidebar"] [role="radiogroup"] {
+            display: flex;
+            flex-direction: column;
+            gap: 0.45rem;
+            margin-top: 0.35rem;
+        }
+
+        [data-testid="stSidebar"] label {
+            border-radius: 12px;
+            padding: 0.7rem 0.8rem;
+            transition: all 0.22s ease;
+            border: 1px solid transparent;
+            margin: 0;
+        }
+
+        [data-testid="stSidebar"] label:hover {
+            background: rgba(91, 180, 255, 0.08);
+            border-color: rgba(91, 180, 255, 0.16);
+            transform: translateX(2px);
+        }
+
+        [data-testid="stSidebar"] label:has(input:checked) {
+            background: linear-gradient(90deg, rgba(91, 180, 255, 0.22), rgba(59, 130, 246, 0.08));
+            border: 1px solid rgba(96, 165, 250, 0.45);
+            box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.2), 0 8px 18px rgba(59, 130, 246, 0.18);
+        }
+
+        [data-testid="stSidebar"] .stRadio > div {
+            gap: 0.5rem;
+        }
+
+        [data-testid="stSidebar"] .stRadio label p {
+            margin: 0;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        div[data-testid="stMainBlockContainer"] {
+            padding-top: 1.25rem;
+        }
+
+        div.stButton > button,
+        div[data-testid="stFormSubmitButton"] > button {
+            width: 100%;
+            border: 1px solid rgba(96, 165, 250, 0.55);
+            border-radius: 14px;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.45), rgba(37, 99, 235, 0.82));
+            color: #edf6ff;
+            font-size: 1.05rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            padding: 0.8rem 1.1rem;
+            box-shadow: 0 12px 24px rgba(59, 130, 246, 0.18);
+            transition: all 0.2s ease;
+        }
+
+        div.stButton > button:hover,
+        div[data-testid="stFormSubmitButton"] > button:hover {
+            border-color: rgba(191, 219, 254, 0.8);
+            background: linear-gradient(135deg, rgba(96, 165, 250, 0.55), rgba(29, 78, 216, 0.95));
+            box-shadow: 0 14px 28px rgba(59, 130, 246, 0.28);
+            transform: translateY(-1px);
+        }
+
+        div.stButton > button:focus:not(:active),
+        div[data-testid="stFormSubmitButton"] > button:focus:not(:active) {
+            box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2), 0 12px 24px rgba(59, 130, 246, 0.18);
+            outline: none;
+        }
+
+        .prediction-card {
+            border-radius: 18px;
+            padding: 1.2rem 1.25rem;
+            margin: 0.5rem 0 1rem 0;
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            box-shadow: 0 18px 38px rgba(15, 23, 42, 0.28);
+            transition: all 0.25s ease;
+        }
+
+        .risk-low {
+            background: linear-gradient(135deg, rgba(57, 217, 138, 0.18), rgba(15, 23, 42, 0.8));
+            border-color: rgba(57, 217, 138, 0.4);
+            box-shadow: 0 0 0 1px rgba(57, 217, 138, 0.1), 0 18px 38px rgba(57, 217, 138, 0.12);
+        }
+
+        .risk-medium {
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.16), rgba(15, 23, 42, 0.8));
+            border-color: rgba(251, 191, 36, 0.38);
+            box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.1), 0 18px 38px rgba(251, 191, 36, 0.12);
+        }
+
+        .risk-high {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.18), rgba(15, 23, 42, 0.8));
+            border-color: rgba(239, 68, 68, 0.38);
+            box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.1), 0 18px 38px rgba(239, 68, 68, 0.12);
+        }
+
+        .risk-very-high {
+            background: linear-gradient(135deg, rgba(127, 29, 29, 0.82), rgba(15, 23, 42, 0.9));
+            border-color: rgba(248, 113, 113, 0.7);
+            box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.18), 0 0 24px rgba(239, 68, 68, 0.35);
+            animation: riskPulse 1.6s ease-in-out infinite;
+        }
+
+        @keyframes riskPulse {
+            0%, 100% { box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.18), 0 0 20px rgba(239, 68, 68, 0.22); }
+            50% { box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.22), 0 0 30px rgba(239, 68, 68, 0.52); }
+        }
+
+        .confidence-card {
+            border-radius: 16px;
+            padding: 1rem 1.1rem;
+            background: linear-gradient(135deg, rgba(91, 180, 255, 0.14), rgba(15, 23, 42, 0.82));
+            border: 1px solid rgba(96, 165, 250, 0.22);
+            box-shadow: 0 8px 20px rgba(59, 130, 246, 0.08);
+            margin-bottom: 1rem;
+        }
+
+        .confidence-value {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #dfeeff;
+            margin-top: 0.35rem;
+        }
+
+        .probability-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 0.55rem;
+            margin-top: 0.4rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .probability-table th,
+        .probability-table td {
+            text-align: left;
+            padding: 0.8rem 0.9rem;
+        }
+
+        .probability-table thead th {
+            color: rgba(226, 232, 240, 0.8);
+            font-size: 0.74rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+        }
+
+        .probability-table tbody tr {
+            background: rgba(15, 23, 42, 0.56);
+            border: 1px solid rgba(148, 163, 184, 0.12);
+            border-radius: 12px;
+        }
+
+        .probability-table tbody td {
+            border-top: 1px solid rgba(148, 163, 184, 0.1);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+            color: var(--text);
+        }
+
+        .risk-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 90px;
+            border-radius: 999px;
+            padding: 0.35rem 0.8rem;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            border: 1px solid transparent;
+        }
+
+        .risk-badge.low { background: rgba(57, 217, 138, 0.14); color: #a7f3d0; border-color: rgba(57, 217, 138, 0.34); }
+        .risk-badge.medium { background: rgba(251, 191, 36, 0.14); color: #fde68a; border-color: rgba(251, 191, 36, 0.34); }
+        .risk-badge.high { background: rgba(239, 68, 68, 0.16); color: #fecaca; border-color: rgba(239, 68, 68, 0.36); }
+        .risk-badge.very-high { background: rgba(127, 29, 29, 0.5); color: #fee2e2; border-color: rgba(248, 113, 113, 0.5); animation: badgePulse 1.5s ease-in-out infinite; }
+
+        @keyframes badgePulse {
+            0%, 100% { box-shadow: 0 0 0 rgba(239, 68, 68, 0); }
+            50% { box-shadow: 0 0 18px rgba(239, 68, 68, 0.28); }
+        }
+
+        .probability-percent {
+            font-weight: 700;
+            color: #f8fbff;
+            text-align: right;
+        }
+
+        .explanation-list {
+            list-style: none;
+            padding: 0;
+            margin: 0.5rem 0 0 0;
+        }
+
+        .explanation-list li {
+            background: rgba(15, 23, 42, 0.46);
+            border: 1px solid rgba(148, 163, 184, 0.12);
+            border-radius: 12px;
+            padding: 0.8rem 0.9rem;
+            margin-bottom: 0.65rem;
+            color: #edf6ff;
+            line-height: 1.5;
+        }
+
+        .explanation-list li strong {
+            color: #7dd3fc;
+            font-weight: 700;
+        }
+
+        .section-card {
+            background: rgba(15, 23, 42, 0.42);
+            border: 1px solid rgba(148, 163, 184, 0.12);
+            border-radius: 16px;
+            padding: 1rem 1.1rem;
+            margin-bottom: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            [data-testid="stSidebar"] {
+                padding: 0.5rem 0.5rem 1rem 0.5rem;
+            }
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 @st.cache_data
@@ -61,6 +352,64 @@ def build_prediction_frame(form_inputs: Dict[str, Any], feature_columns: List[st
     return pd.DataFrame([record], columns=feature_columns)
 
 
+def get_severity_info(class_value: Any) -> Dict[str, str]:
+    try:
+        class_key = int(class_value)
+    except (TypeError, ValueError):
+        return {"severity": str(class_value), "risk": "Unknown"}
+    return SEVERITY_MAPPING.get(class_key, {"severity": f"Class {class_key}", "risk": "Unknown"})
+
+
+def get_risk_theme(risk_label: str) -> Dict[str, str]:
+    normalized = str(risk_label).strip().lower()
+    if "low" in normalized or "slight" in normalized:
+        return {"class": "risk-low", "color": "#39d98a", "accent": "#39d98a", "background": "rgba(57, 217, 138, 0.12)"}
+    if "high" in normalized or "serious" in normalized:
+        return {"class": "risk-high", "color": "#ef4444", "accent": "#ef4444", "background": "rgba(239, 68, 68, 0.12)"}
+    if "very high" in normalized or "fatal" in normalized:
+        return {"class": "risk-very-high", "color": "#fca5a5", "accent": "#ef4444", "background": "rgba(127, 29, 29, 0.22)"}
+    return {"class": "risk-high", "color": "#ef4444", "accent": "#ef4444", "background": "rgba(239, 68, 68, 0.12)"}
+
+
+def format_explanation_line(line: str) -> str:
+    text = str(line).replace("categorical = ", "").strip()
+    replacements = {
+        "Age_band_of_driver_": "Age band: ",
+        "Sex_of_driver_": "Driver sex: ",
+        "Educational_level_": "Education level: ",
+        "Vehicle_driver_relation_": "Vehicle-driver relation: ",
+        "Driving_experience_": "Driving experience: ",
+        "Lanes_or_Medians_": "Road layout: ",
+        "Types_of_Junction_": "Junction type: ",
+        "Road_surface_type_": "Road surface: ",
+        "Light_conditions_": "Light conditions: ",
+        "Weather_conditions_": "Weather conditions: ",
+        "Type_of_collision_": "Collision type: ",
+        "Vehicle_movement_": "Vehicle movement: ",
+        "Pedestrian_movement_": "Pedestrian movement: ",
+        "Cause_of_accident_": "Cause of accident: ",
+        "Age_band_of_driver": "Age band: ",
+        "Sex_of_driver": "Driver sex: ",
+        "Educational_level": "Education level: ",
+        "Vehicle_driver_relation": "Vehicle-driver relation: ",
+        "Driving_experience": "Driving experience: ",
+        "Lanes_or_Medians": "Road layout: ",
+        "Types_of_Junction": "Junction type: ",
+        "Road_surface_type": "Road surface: ",
+        "Light_conditions": "Light conditions: ",
+        "Weather_conditions": "Weather conditions: ",
+        "Type_of_collision": "Collision type: ",
+        "Vehicle_movement": "Vehicle movement: ",
+        "Pedestrian_movement": "Pedestrian movement: ",
+        "Cause_of_accident": "Cause of accident: ",
+    }
+    for old, new in replacements.items():
+        if old in text:
+            text = text.replace(old, new)
+    text = text.replace("_", " ")
+    return text
+
+
 def home_page() -> None:
     df = load_clean_dataset()
     model, metadata = load_best_model_and_metadata()
@@ -92,7 +441,7 @@ def home_page() -> None:
     st.markdown("DATA → EDA → PREPROCESSING → ML MODELS → EVALUATION → RISK PREDICTION → EXPLANATION")
 
     if st.button("Predict Accident Risk", use_container_width=True):
-        st.session_state.page = "Predict Risk"
+        st.session_state.navigation_target = "Predict Risk"
         st.rerun()
 
 
@@ -317,32 +666,92 @@ def predict_page() -> None:
         class_labels = model.classes_
         max_index = int(probabilities.argmax())
         confidence = float(probabilities[max_index] * 100)
-        risk_mapping = {int(key): value for key, value in metadata.get("risk_mapping", {}).items()}
-        risk_level = risk_mapping.get(prediction, "Unknown")
-        predicted_label = risk_level if prediction in risk_mapping else str(prediction)
+        predicted_info = get_severity_info(prediction)
+        predicted_severity = predicted_info["severity"]
+        risk_level = predicted_info["risk"]
+        risk_level_display = risk_level.upper()
+        risk_theme = get_risk_theme(risk_level)
 
         st.subheader("PREDICTED ACCIDENT SEVERITY")
-        st.markdown(f"<h2>Predicted Severity: <span style='color:#4f8bf9'>{predicted_label}</span></h2>", unsafe_allow_html=True)
-        st.markdown(f"<h3>Prediction Confidence: {confidence:.2f}%</h3>", unsafe_allow_html=True)
-
-        probability_df = pd.DataFrame(
-            {"Severity Class": [str(label) for label in class_labels], "Probability": [float(prob) for prob in probabilities]}
+        st.markdown(
+            f"""
+            <div class="prediction-card {risk_theme['class']}">
+                <div style="font-size: 0.75rem; color: rgba(255,255,255,0.7); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.45rem;">Accident Severity</div>
+                <div style="font-size: 2rem; font-weight: 800; color: white; line-height: 1.2;">{predicted_severity}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
-        probability_df["Probability"] = probability_df["Probability"] * 100
-        st.dataframe(probability_df, use_container_width=True)
 
-        explanation = explain_model_prediction(model, input_frame.iloc[0], risk_mapping)
+        st.markdown(
+            f"""
+            <div class="confidence-card">
+                <div style="font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(191,219,254,0.8);">Risk Level</div>
+                <div class="confidence-value" style="color: {risk_theme['color']};">{risk_level_display}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        probability_rows = []
+        for class_label, probability in zip(class_labels, probabilities):
+            severity_info = get_severity_info(class_label)
+            risk_name = severity_info["risk"]
+            risk_key = str(risk_name).lower()
+            if "very" in risk_key:
+                badge_class = "very-high"
+            elif "high" in risk_key:
+                badge_class = "high"
+            else:
+                badge_class = "low"
+            probability_rows.append(
+                {
+                    "Accident Severity": severity_info["severity"],
+                    "Risk Level": risk_name,
+                    "Probability": float(probability) * 100,
+                    "Badge Class": badge_class,
+                }
+            )
+
+        st.markdown(
+            f"""
+            <div class="section-card">
+                <div style="font-size: 0.8rem; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(191,219,254,0.8); margin-bottom: 0.5rem;">Severity Probability</div>
+                <table class="probability-table">
+                    <thead>
+                        <tr>
+                            <th>Accident Severity</th>
+                            <th>Risk Level</th>
+                            <th style="text-align:right;">Probability</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {''.join(f"<tr><td>{row['Accident Severity']}</td><td><span class='risk-badge {row['Badge Class']}'>{row['Risk Level']}</span></td><td class='probability-percent'>{row['Probability']:.2f}%</td></tr>" for row in probability_rows)}
+                    </tbody>
+                </table>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        severity_mapping = {int(class_label): get_severity_info(class_label)["severity"] for class_label in class_labels}
+        explanation = explain_model_prediction(model, input_frame.iloc[0], severity_mapping)
+        if explanation.get("explanation_lines"):
+            explanation["explanation_lines"][0] = (
+                f"The selected conditions are most consistent with {predicted_severity} severity, which corresponds to {risk_level} Risk."
+            )
         st.subheader("WHY IS THIS RISK?")
-        for line in explanation["explanation_lines"]:
-            st.write(f"- {line}")
+        formatted_lines = [format_explanation_line(line) for line in explanation["explanation_lines"]]
+        explanation_html = "".join(f"<li><strong>✓</strong> {line}</li>" for line in formatted_lines)
+        st.markdown(f"<ul class='explanation-list'>{explanation_html}</ul>", unsafe_allow_html=True)
 
         st.subheader("SAFETY RECOMMENDATION")
         recommendation = generate_safety_recommendation(input_frame.iloc[0])
         st.info(recommendation)
 
         st.markdown("### Risk Summary")
-        st.write(f"Severity: {predicted_label}")
-        st.write(f"Risk Level: {risk_level}")
+        st.write(f"Severity: {predicted_severity}")
+        st.write(f"Risk Level: {risk_level_display}")
         st.write(f"Confidence: {confidence:.2f}%")
 
 
@@ -356,8 +765,18 @@ def main() -> None:
         "About": about_page,
     }
 
+    if "menu_selection" not in st.session_state:
+        st.session_state.menu_selection = "Home"
+
+    page_names = list(pages.keys())
+    if "navigation_target" in st.session_state and st.session_state.navigation_target in page_names:
+        st.session_state.menu_selection = st.session_state.navigation_target
+        st.session_state.navigation_target = ""
+
+    selected_index = page_names.index(st.session_state.menu_selection) if st.session_state.menu_selection in page_names else 0
+
     st.sidebar.title("Navigation")
-    selection = st.sidebar.radio("Menu", list(pages.keys()))
+    selection = st.sidebar.radio("Menu", page_names, index=selected_index, key="menu_selection")
     pages[selection]()
 
 

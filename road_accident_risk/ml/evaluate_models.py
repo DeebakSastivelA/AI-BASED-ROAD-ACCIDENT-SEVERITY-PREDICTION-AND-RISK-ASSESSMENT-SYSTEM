@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 
+from ml.utils import SEVERITY_MAP
+
 
 def evaluate_model(model_pipeline, X_test: pd.DataFrame, y_test: pd.Series) -> Dict[str, Any]:
     predictions = model_pipeline.predict(X_test)
@@ -24,8 +26,8 @@ def evaluate_model(model_pipeline, X_test: pd.DataFrame, y_test: pd.Series) -> D
     confusion = confusion_matrix(y_test, predictions, labels=classes)
 
     class_report = {}
-    for idx, class_label in enumerate(classes):
-        class_mask = (y_test == class_label)
+    for class_label in classes:
+        class_mask = y_test == class_label
         if not class_mask.any():
             class_report[str(class_label)] = {"precision": 0.0, "recall": 0.0, "f1": 0.0, "support": 0}
             continue
@@ -64,15 +66,17 @@ def save_confusion_matrix(confusion: np.ndarray, labels: List[Any], output_path:
     plt.imshow(confusion, interpolation="nearest", cmap="Blues")
     plt.title(title)
     plt.colorbar()
-    tick_labels = [str(label) for label in labels]
-    plt.xticks(np.arange(len(labels)), tick_labels)
+
+    tick_labels = [SEVERITY_MAP.get(int(label), str(label)) for label in labels]
+    plt.xticks(np.arange(len(labels)), tick_labels, rotation=20)
     plt.yticks(np.arange(len(labels)), tick_labels)
     plt.xlabel("Predicted label")
     plt.ylabel("True label")
 
     for i in range(confusion.shape[0]):
         for j in range(confusion.shape[1]):
-            plt.text(j, i, int(confusion[i, j]), ha="center", va="center", color="white" if confusion[i, j] > confusion.max() / 2 else "black")
+            value = int(confusion[i, j])
+            plt.text(j, i, value, ha="center", va="center", color="white" if value > confusion.max() / 2 else "black")
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=200)

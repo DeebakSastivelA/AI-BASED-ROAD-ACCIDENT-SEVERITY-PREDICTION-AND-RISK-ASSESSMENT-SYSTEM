@@ -1,28 +1,32 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
 
-from ml.utils import infer_risk_mapping
-
 
 def format_feature_name(encoded_name: str) -> str:
-    if "__" not in encoded_name:
-        return encoded_name
-    feature_name, value = encoded_name.split("__", 1)
-    return f"{feature_name} = {value}"
+    clean_name = str(encoded_name)
+    clean_name = clean_name.replace("categorical__", "")
+    clean_name = clean_name.replace("numeric__", "")
+    clean_name = clean_name.replace("remainder__", "")
+    clean_name = clean_name.replace("__", " - ")
+    clean_name = clean_name.replace("_", " ")
+    clean_name = clean_name.strip()
+    if clean_name == "":
+        return "Field value"
+    return clean_name
 
 
 def explain_model_prediction(model_pipeline, input_row: pd.Series, target_mapping: Dict[Any, str]) -> Dict[str, Any]:
     preprocessor = model_pipeline.named_steps["preprocessor"]
     model = model_pipeline.named_steps["model"]
     encoded_features = preprocessor.get_feature_names_out()
-    transformed = preprocessor.transform(pd.DataFrame([input_row]))
+    input_frame = pd.DataFrame([input_row])
 
-    prediction = model_pipeline.predict(pd.DataFrame([input_row]))[0]
-    probabilities = model_pipeline.predict_proba(pd.DataFrame([input_row]))[0]
+    prediction = model_pipeline.predict(input_frame)[0]
+    probabilities = model_pipeline.predict_proba(input_frame)[0]
     predicted_index = int(np.argmax(probabilities))
     class_order = model.classes_
 
@@ -50,24 +54,23 @@ def explain_model_prediction(model_pipeline, input_row: pd.Series, target_mappin
         top_features = []
 
     risk_label = target_mapping.get(prediction, "Unknown")
-    explanation_lines = [
-        f"The selected conditions are most consistent with {risk_label} severity.",
-    ]
+    explanation_lines = [f"The selected conditions are most consistent with {risk_label} severity."]
 
     for entry in top_features[:5]:
         feature_name = entry["feature"]
-        if feature_name.lower().startswith("light_conditions") or "Light_conditions" in feature_name:
-            explanation_lines.append(f"{feature_name} is a strong contributor to the current risk profile.")
-        elif feature_name.lower().startswith("weather_conditions") or "Weather_conditions" in feature_name:
-            explanation_lines.append(f"{feature_name} shifts the prediction toward more hazardous conditions.")
-        elif feature_name.lower().startswith("types_of_junction") or "Types_of_Junction" in feature_name:
-            explanation_lines.append(f"{feature_name} suggests a junction-related risk factor.")
-        elif feature_name.lower().startswith("type_of_collision") or "Type_of_collision" in feature_name:
-            explanation_lines.append(f"{feature_name} is important in explaining the severity estimate.")
-        elif feature_name.lower().startswith("driving_experience") or "Driving_experience" in feature_name:
-            explanation_lines.append(f"{feature_name} is associated with the current driving risk pattern.")
+        readable = feature_name.lower()
+        if "light" in readable:
+            explanation_lines.append(f"{feature_name} increased the probability of a severe outcome in this scenario.")
+        elif "weather" in readable:
+            explanation_lines.append(f"{feature_name} shifted the risk estimate toward a more hazardous condition.")
+        elif "junction" in readable:
+            explanation_lines.append(f"{feature_name} contributed to the predicted severity level for this road context.")
+        elif "collision" in readable or "movement" in readable:
+            explanation_lines.append(f"{feature_name} was a strong driver of the predicted accident severity.")
+        elif "driving" in readable or "experience" in readable:
+            explanation_lines.append(f"{feature_name} affected the risk profile for this driver profile.")
         else:
-            explanation_lines.append(f"{feature_name} contributes to the predicted severity for this case.")
+            explanation_lines.append(f"{feature_name} contributed to the predicted severity for this case.")
 
     return {
         "prediction": int(prediction),
@@ -88,16 +91,14 @@ def generate_safety_recommendation(input_row: pd.Series) -> str:
     pedestrian = str(selected.get("Pedestrian_movement", "")).lower()
     cause = str(selected.get("Cause_of_accident", "")).lower()
 
-    if "darkness" in light or "lights unlit" in light or "no lighting" in light:
+    if "darkness" in light or "no lighting" in light or "dark" in light:
         return "Reduce speed and increase following distance in low-visibility conditions. Use headlights appropriately and stay highly alert for pedestrians and cyclists."
-    if "rain" in weather or "fog" in weather or "snow" in weather or "wind" in weather:
+    if any(token in weather for token in ["rain", "fog", "snow", "wind"]):
         return "Drive at reduced speed and maintain additional braking distance in poor weather. Increase caution around junctions and turning vehicles."
-    if "junction" in junction or "crossing" in junction or "shape" in junction:
+    if any(token in junction for token in ["junction", "crossing", "roundabout", "T", "Y"]):
         return "Approach intersections cautiously, check both directions, and yield to crossing vehicles and pedestrians before proceeding."
     if "pedestrian" in collision or "pedestrian" in pedestrian:
         return "Keep a safe speed and remain extra alert for unexpected pedestrian movement, especially near crossings and vehicle stops."
-    if "changing lane" in cause or "overtaking" in cause or "moving backward" in cause:
+    if any(token in cause for token in ["changing lane", "overtaking", "reverse", "speed violation", "careless"]):
         return "Avoid risky lane changes and overtaking when visibility or space is limited. Check mirrors and blind spots carefully before maneuvering."
-    if "speed" in cause or "driving carelessly" in cause or "no distancing" in cause:
-        return "Stay within the speed limit, keep safe following distance, and avoid aggressive driving to reduce accident severity."
     return "Maintain a defensive driving style, keep a safe following distance, and stay attentive to road, weather, and pedestrian activity."

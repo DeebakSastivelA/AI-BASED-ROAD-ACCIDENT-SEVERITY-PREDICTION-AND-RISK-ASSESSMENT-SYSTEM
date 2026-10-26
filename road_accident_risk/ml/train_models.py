@@ -8,7 +8,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import joblib
-import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
@@ -16,7 +15,7 @@ from sklearn.model_selection import train_test_split
 from ml.data_analysis import generate_eda_charts
 from ml.evaluate_models import evaluate_model, save_confusion_matrix, select_best_model
 from ml.preprocessing import TARGET_COLUMN, clean_dataset, identify_feature_columns, make_model_pipeline
-from ml.utils import DATA_PATH, MODELS_DIR, MODEL_EVAL_DIR, ensure_project_dirs, infer_risk_mapping, load_dataset, save_json
+from ml.utils import DATA_PATH, MODELS_DIR, MODEL_EVAL_DIR, SEVERITY_MAP, ensure_project_dirs, infer_risk_mapping, load_dataset, save_json
 
 
 def make_json_safe(value):
@@ -47,25 +46,20 @@ def train_and_evaluate_models() -> dict:
     X_train, X_test, y_train, y_test = train_test_split(
         X,
         y,
-        test_size=0.2,
+        test_size=0.20,
         stratify=y,
         random_state=42,
     )
 
     logistic_model = LogisticRegression(
-        max_iter=500,
+        max_iter=2000,
         solver="lbfgs",
-        C=1.0,
-        class_weight="balanced",
         random_state=42,
     )
     random_forest_model = RandomForestClassifier(
         n_estimators=250,
-        max_depth=None,
-        min_samples_split=2,
-        min_samples_leaf=1,
-        class_weight="balanced",
         random_state=42,
+        n_jobs=-1,
     )
 
     logistic_pipeline = make_model_pipeline(logistic_model, X_train)
@@ -100,42 +94,41 @@ def train_and_evaluate_models() -> dict:
     joblib.dump(best_model, MODELS_DIR / "best_model.joblib")
 
     risk_mapping = infer_risk_mapping(y)
-
     metadata = {
+        "dataset_name": DATA_PATH.name,
+        "dataset_path": str(DATA_PATH),
+        "number_of_records": int(len(cleaned_df)),
+        "number_of_features": int(len(feature_columns)),
+        "target_column": TARGET_COLUMN,
+        "class_names": {str(key): value for key, value in SEVERITY_MAP.items()},
+        "class_mapping": {str(key): value for key, value in SEVERITY_MAP.items()},
+        "train_test_split": {"test_size": 0.2, "random_state": 42, "stratify": True},
         "selected_model": best_model_name,
         "classes": sorted(y.unique().tolist()),
         "feature_names": feature_columns,
-        "risk_mapping": {str(key): value for key, value in risk_mapping.items()},
-        "metrics": make_json_safe(model_results[best_model_name]),
+        "risk_mapping": {str(key): risk_mapping.get(key, "Unknown") for key in sorted(y.unique().tolist())},
         "all_model_metrics": {
             "logistic_regression": make_json_safe(model_results["logistic_regression"]),
             "random_forest": make_json_safe(model_results["random_forest"]),
         },
+        "metrics": make_json_safe(model_results[best_model_name]),
         "model_parameters": {
             "logistic_regression": {
-                "max_iter": 500,
-                "C": 1.0,
+                "max_iter": 2000,
                 "solver": "lbfgs",
-                "class_weight": "balanced",
                 "random_state": 42,
             },
             "random_forest": {
                 "n_estimators": 250,
-                "max_depth": None,
-                "min_samples_split": 2,
-                "min_samples_leaf": 1,
-                "class_weight": "balanced",
                 "random_state": 42,
+                "n_jobs": -1,
             },
         },
         "training_info": {
-            "dataset_path": str(DATA_PATH),
             "train_rows": int(len(X_train)),
             "test_rows": int(len(X_test)),
             "target_distribution": y.value_counts().sort_index().to_dict(),
-            "random_state": 42,
-            "test_size": 0.2,
-            "stratified": True,
+            "class_count": len(y.unique()),
         },
     }
 

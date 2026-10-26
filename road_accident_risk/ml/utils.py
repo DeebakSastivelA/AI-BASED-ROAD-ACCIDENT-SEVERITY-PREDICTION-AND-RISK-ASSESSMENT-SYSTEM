@@ -2,27 +2,50 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable
 
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DATA_PATH = PROJECT_ROOT / "data" / "cleaned.csv"
+WORKSPACE_ROOT = PROJECT_ROOT.parent
+PRIMARY_DATASET_CANDIDATES = [
+    WORKSPACE_ROOT / "road_accident_balanced_reality_based_18000.csv",
+    PROJECT_ROOT / "road_accident_balanced_reality_based_18000.csv",
+    WORKSPACE_ROOT / "cleaned.csv",
+    PROJECT_ROOT / "data" / "cleaned.csv",
+]
+DATA_PATH = next((path for path in PRIMARY_DATASET_CANDIDATES if path.exists()), WORKSPACE_ROOT / "road_accident_balanced_reality_based_18000.csv")
+LEGACY_DATASET_PATH = WORKSPACE_ROOT / "cleaned.csv"
 MODELS_DIR = PROJECT_ROOT / "models"
 REPORTS_DIR = PROJECT_ROOT / "reports"
 EDA_DIR = REPORTS_DIR / "eda"
 MODEL_EVAL_DIR = REPORTS_DIR / "model_evaluation"
 
+SEVERITY_MAP = {
+    0: "Fatal Injury",
+    1: "Serious Injury",
+    2: "Slight Injury",
+}
+
+RISK_MAP = {
+    0: "Very High",
+    1: "High",
+    2: "Low",
+}
+
 
 def ensure_project_dirs() -> None:
-    for directory in [DATA_PATH.parent, MODELS_DIR, REPORTS_DIR, EDA_DIR, MODEL_EVAL_DIR]:
+    for directory in [MODELS_DIR, REPORTS_DIR, EDA_DIR, MODEL_EVAL_DIR, PROJECT_ROOT]:
         directory.mkdir(parents=True, exist_ok=True)
 
 
 def load_dataset(path: Path | str = DATA_PATH) -> pd.DataFrame:
     dataset_path = Path(path)
     if not dataset_path.exists():
-        raise FileNotFoundError(f"Dataset not found: {dataset_path}")
+        raise FileNotFoundError(
+            "road_accident_balanced_reality_based_18000.csv must be placed in the project root next to cleaned.csv. "
+            f"Dataset not found: {dataset_path}"
+        )
     return pd.read_csv(dataset_path)
 
 
@@ -56,27 +79,13 @@ def standardize_string_series(series: pd.Series) -> pd.Series:
 
 
 def infer_risk_mapping(target_series: Iterable[Any]) -> Dict[Any, str]:
-    values = list(dict.fromkeys(pd.Series(target_series).dropna().astype(str).str.strip().tolist()))
-    if not values:
-        return {}
-    try:
-        numeric_values = sorted(pd.to_numeric(values, errors="coerce").dropna().astype(int).tolist())
-    except Exception:
-        numeric_values = sorted([int(float(v)) for v in values if str(v).strip() not in {"", "Unknown"}])
-
+    numeric_values = pd.Series(target_series).dropna().astype(int).unique().tolist()
     if not numeric_values:
-        return {value: f"Class {value}" for value in values}
-
-    counts = pd.Series(target_series).dropna().astype(int).value_counts().sort_index()
-    if len(numeric_values) == 1:
-        return {numeric_values[0]: "High"}
-
-    low_label = int(counts.idxmax())
-    high_label = int(counts.idxmin())
-    unique_labels = numeric_values
-    middle_labels = [value for value in unique_labels if value not in {low_label, high_label}]
-    middle_label = middle_labels[0] if middle_labels else unique_labels[1]
-    mapping = {low_label: "Low", middle_label: "Medium", high_label: "High"}
+        return {}
+    mapping = {}
+    for value in sorted(set(numeric_values)):
+        if value in SEVERITY_MAP:
+            mapping[value] = RISK_MAP.get(value, "Unknown")
     return mapping
 
 
